@@ -104,6 +104,20 @@ function isDirectSkillUrl(input: string): boolean {
 }
 
 /**
+ * Check if a URL is a direct link to a ZIP file containing skills.
+ * e.g., https://example.com/skill.zip
+ * e.g., https://example.com/path/to/skill.zip
+ */
+function isZipUrl(input: string): boolean {
+  if (!input.startsWith('http://') && !input.startsWith('https://')) {
+    return false;
+  }
+
+  // Must end with .zip (case insensitive)
+  return input.toLowerCase().endsWith('.zip');
+}
+
+/**
  * Parse a source string into a structured format
  * Supports: local paths, GitHub URLs, GitLab URLs, GitHub shorthand, direct skill.md URLs, and direct git URLs
  */
@@ -121,6 +135,14 @@ export function parseSource(input: string): ParsedSource {
 
   // Direct skill.md URL (non-GitHub/GitLab): https://docs.bun.com/docs/skill.md
   if (isDirectSkillUrl(input)) {
+    return {
+      type: 'direct-url',
+      url: input,
+    };
+  }
+
+  // ZIP file URL: https://example.com/skill.zip
+  if (isZipUrl(input)) {
     return {
       type: 'direct-url',
       url: input,

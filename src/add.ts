@@ -30,11 +30,17 @@ import {
   getCanonicalPath,
   installRemoteSkillForAgent,
   installWellKnownSkillForAgent,
+  installZipSkillForAgent,
   type InstallMode,
 } from './installer.ts';
 import { detectInstalledAgents, agents } from './agents.ts';
 import { track, setVersion } from './telemetry.ts';
-import { findProvider, wellKnownProvider, type WellKnownSkill } from './providers/index.ts';
+import {
+  findProvider,
+  wellKnownProvider,
+  type WellKnownSkill,
+  type ZipSkill,
+} from './providers/index.ts';
 import { fetchMintlifySkill } from './mintlify.ts';
 import {
   addSkillToLock,
@@ -189,16 +195,17 @@ async function handleRemoteSkill(
     return;
   }
 
-  spinner.start(`Fetching skill.md from ${provider.displayName}...`);
+  spinner.start(`Fetching skill from ${provider.displayName}...`);
   const providerSkill = await provider.fetchSkill(url);
 
   if (!providerSkill) {
     spinner.stop(pc.red('Invalid skill'));
-    p.outro(
-      pc.red('Could not fetch skill.md or missing required frontmatter (name, description).')
-    );
+    p.outro(pc.red('Could not fetch skill or missing required frontmatter (name, description).'));
     process.exit(1);
   }
+
+  // Check if this is a ZIP skill with multiple files
+  const isZipSkill = 'files' in providerSkill && providerSkill.files instanceof Map;
 
   // Convert to RemoteSkill format with provider info
   const remoteSkill: RemoteSkill = {
@@ -212,7 +219,12 @@ async function handleRemoteSkill(
     metadata: providerSkill.metadata,
   };
 
-  spinner.stop(`Found skill: ${pc.cyan(remoteSkill.installName)}`);
+  // Keep reference to ZIP skill if applicable (for multi-file installation)
+  const zipSkill = isZipSkill ? (providerSkill as ZipSkill) : null;
+
+  spinner.stop(
+    `Found skill: ${pc.cyan(remoteSkill.installName)}${zipSkill ? ` (${zipSkill.files.size} files)` : ''}`
+  );
 
   p.log.info(`Skill: ${pc.cyan(remoteSkill.name)}`);
   p.log.message(pc.dim(remoteSkill.description));
@@ -420,10 +432,16 @@ async function handleRemoteSkill(
   }[] = [];
 
   for (const agent of targetAgents) {
-    const result = await installRemoteSkillForAgent(remoteSkill, agent, {
-      global: installGlobally,
-      mode: installMode,
-    });
+    // Use ZIP installer for multi-file skills, otherwise use standard remote installer
+    const result = zipSkill
+      ? await installZipSkillForAgent(zipSkill, agent, {
+          global: installGlobally,
+          mode: installMode,
+        })
+      : await installRemoteSkillForAgent(remoteSkill, agent, {
+          global: installGlobally,
+          mode: installMode,
+        });
     results.push({
       skill: remoteSkill.installName,
       agent: agents[agent].displayName,

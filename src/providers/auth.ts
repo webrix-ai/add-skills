@@ -453,8 +453,8 @@ export async function performOAuthFlow(
   const clients = await getClientStorage();
   let clientInfo: OAuthClientInfo | undefined = clients.get(serverKey);
 
-  if (!clientInfo) {
-    // Register a new client
+  if (!clientInfo || !clientInfo.redirect_uris?.includes(redirectUri)) {
+    // Register a new client (fresh or stale-cache recovery)
     const newClientInfo = await registerOAuthClient(
       authMetadata.registration_endpoint,
       redirectUri

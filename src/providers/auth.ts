@@ -86,12 +86,21 @@ let tokenStorage: Map<string, OAuthTokens> | null = null;
 let clientStorage: Map<string, OAuthClientInfo> | null = null;
 
 /**
- * Get the path to the auth storage file.
+ * Get the path to the auth storage directory.
  */
-async function getAuthFilePath(): Promise<string> {
+async function getAuthDirPath(): Promise<string> {
   const os = await import('os');
   const path = await import('path');
   return path.join(os.homedir(), '.skills-auth');
+}
+
+/**
+ * Get the path to the auth storage file.
+ */
+async function getAuthFilePath(): Promise<string> {
+  const path = await import('path');
+  const dir = await getAuthDirPath();
+  return path.join(dir, 'token.json');
 }
 
 /**
@@ -107,22 +116,41 @@ async function loadAuthData(): Promise<void> {
 
   try {
     const fs = await import('fs/promises');
-    const authPath = await getAuthFilePath();
-    const data = await fs.readFile(authPath, 'utf-8');
-    const parsed: PersistedAuthData = JSON.parse(data);
+    const authDir = await getAuthDirPath();
+    const authFile = await getAuthFilePath();
 
-    if (parsed.tokens) {
-      for (const [key, value] of Object.entries(parsed.tokens)) {
-        tokenStorage.set(key, value);
+    let raw: string | undefined;
+
+    try {
+      raw = await fs.readFile(authFile, 'utf-8');
+    } catch {
+      // Fall back to legacy single-file format (~/.skills-auth as a file)
+      try {
+        const stat = await fs.stat(authDir);
+        if (stat.isFile()) {
+          raw = await fs.readFile(authDir, 'utf-8');
+        }
+      } catch {
+        // Neither path exists
       }
     }
-    if (parsed.clients) {
-      for (const [key, value] of Object.entries(parsed.clients)) {
-        clientStorage.set(key, value);
+
+    if (raw) {
+      const parsed: PersistedAuthData = JSON.parse(raw);
+
+      if (parsed.tokens) {
+        for (const [key, value] of Object.entries(parsed.tokens)) {
+          tokenStorage.set(key, value);
+        }
+      }
+      if (parsed.clients) {
+        for (const [key, value] of Object.entries(parsed.clients)) {
+          clientStorage.set(key, value);
+        }
       }
     }
   } catch {
-    // File doesn't exist or is invalid, start fresh
+    // Data is invalid, start fresh
   }
 }
 
@@ -136,14 +164,26 @@ async function saveAuthData(): Promise<void> {
 
   try {
     const fs = await import('fs/promises');
-    const authPath = await getAuthFilePath();
+    const authDir = await getAuthDirPath();
+    const authFile = await getAuthFilePath();
 
     const data: PersistedAuthData = {
       tokens: Object.fromEntries(tokenStorage),
       clients: Object.fromEntries(clientStorage),
     };
 
-    await fs.writeFile(authPath, JSON.stringify(data, null, 2), { mode: 0o600 });
+    // Migrate legacy single-file format to directory
+    try {
+      const stat = await fs.stat(authDir);
+      if (stat.isFile()) {
+        await fs.unlink(authDir);
+      }
+    } catch {
+      // Doesn't exist yet
+    }
+
+    await fs.mkdir(authDir, { recursive: true });
+    await fs.writeFile(authFile, JSON.stringify(data, null, 2), { mode: 0o600 });
   } catch {
     // Ignore save errors
   }

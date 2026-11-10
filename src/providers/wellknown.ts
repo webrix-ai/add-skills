@@ -1,4 +1,5 @@
 import matter from 'gray-matter';
+import { fetchWithAuth } from './auth.ts';
 import type { HostProvider, ProviderMatch, RemoteSkill } from './types.ts';
 
 /**
@@ -41,6 +42,12 @@ export interface WellKnownSkill extends RemoteSkill {
  * - https://example.com/docs (discovers from /docs/.well-known/skills/)
  * - https://example.com/.well-known/skills (discovers all skills)
  * - https://example.com/.well-known/skills/skill-name (specific skill)
+ *
+ * The query string is forwarded to index.json, so a server can narrow the list
+ * (e.g. https://example.com/skills?source=repo:acme/tools).
+ *
+ * Endpoints protected with OAuth are supported: a 401 carrying a
+ * resource_metadata challenge starts the same browser flow as ZIP sources.
  *
  * The source identifier is "wellknown/{hostname}" or "wellknown/{hostname}/path".
  */
@@ -97,7 +104,7 @@ export class WellKnownProvider implements HostProvider {
       const urlsToTry = [
         // Path-relative: https://example.com/docs/.well-known/skills/index.json
         {
-          indexUrl: `${parsed.protocol}//${parsed.host}${basePath}/${this.WELL_KNOWN_PATH}/${this.INDEX_FILE}`,
+          indexUrl: `${parsed.protocol}//${parsed.host}${basePath}/${this.WELL_KNOWN_PATH}/${this.INDEX_FILE}${parsed.search}`,
           baseUrl: `${parsed.protocol}//${parsed.host}${basePath}`,
         },
       ];
@@ -105,14 +112,19 @@ export class WellKnownProvider implements HostProvider {
       // Also try root if we have a path
       if (basePath && basePath !== '') {
         urlsToTry.push({
-          indexUrl: `${parsed.protocol}//${parsed.host}/${this.WELL_KNOWN_PATH}/${this.INDEX_FILE}`,
+          indexUrl: `${parsed.protocol}//${parsed.host}/${this.WELL_KNOWN_PATH}/${this.INDEX_FILE}${parsed.search}`,
           baseUrl: `${parsed.protocol}//${parsed.host}`,
         });
       }
 
       for (const { indexUrl, baseUrl: resolvedBase } of urlsToTry) {
         try {
-          const response = await fetch(indexUrl);
+          const response = await fetchWithAuth(indexUrl);
+
+          // Still 401 after the OAuth attempt; trying the root would prompt again.
+          if (response.status === 401) {
+            return null;
+          }
 
           if (!response.ok) {
             continue;
@@ -244,7 +256,7 @@ export class WellKnownProvider implements HostProvider {
 
       // Fetch SKILL.md first (required)
       const skillMdUrl = `${skillBaseUrl}/SKILL.md`;
-      const response = await fetch(skillMdUrl);
+      const response = await fetchWithAuth(skillMdUrl);
 
       if (!response.ok) {
         return null;
@@ -267,7 +279,7 @@ export class WellKnownProvider implements HostProvider {
       const filePromises = otherFiles.map(async (filePath) => {
         try {
           const fileUrl = `${skillBaseUrl}/${filePath}`;
-          const fileResponse = await fetch(fileUrl);
+          const fileResponse = await fetchWithAuth(fileUrl);
           if (fileResponse.ok) {
             const fileContent = await fileResponse.text();
             return { path: filePath, content: fileContent };
@@ -345,7 +357,7 @@ export class WellKnownProvider implements HostProvider {
 
       // Otherwise, return the index URL
       const basePath = parsed.pathname.replace(/\/$/, '');
-      return `${parsed.protocol}//${parsed.host}${basePath}/${this.WELL_KNOWN_PATH}/${this.INDEX_FILE}`;
+      return `${parsed.protocol}//${parsed.host}${basePath}/${this.WELL_KNOWN_PATH}/${this.INDEX_FILE}${parsed.search}`;
     } catch {
       return url;
     }

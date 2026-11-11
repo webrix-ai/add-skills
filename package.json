@@ -1,6 +1,6 @@
 {
   "name": "@mcp-s/skills",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "The open agent skills ecosystem",
   "type": "module",
   "bin": {
@@ -79,11 +79,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/vercel-labs/skills.git"
+    "url": "git+https://github.com/webrix-ai/add-skills.git"
   },
-  "homepage": "https://github.com/vercel-labs/skills#readme",
+  "homepage": "https://github.com/webrix-ai/add-skills#readme",
   "bugs": {
-    "url": "https://github.com/vercel-labs/skills/issues"
+    "url": "https://github.com/webrix-ai/add-skills/issues"
   },
   "author": "",
   "license": "MIT",
